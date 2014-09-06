@@ -128,6 +128,7 @@ private[kinesis] class KinesisReceiver(
         workerId, new KinesisCheckpointState(checkpointInterval))
     }
     worker = new Worker(recordProcessorFactory, kinesisClientLibConfiguration)
+    //It's the bug. onStart method have to be non blocking!
     worker.run()
     logInfo(s"Started receiver with workerId $workerId")
   }

@@ -152,13 +152,16 @@ object AdvancedKinesisWordCountASL extends Logging {
 
     // Increment the globalBatchCount (number of batches)
     wordsDStream.foreachRDD(batchRDD => {
-    globalBatchCount += 1
+      globalBatchCount += 1
       // Increment the globalSum (sum of words in all RDDs)
       globalSum += batchRDD.fold(0)(_+_)
     })
 
-    // Increment the globalRDDCount (number of RDDs in all batches)
-    wordsDStream.count().foreachRDD(countRDD => {globalRDDCount += countRDD.first()})
+    // Increment the globalRDDCount (number of RDDs in all batches) by the current number of RDDs
+    //   in this current batch using DStream.count()
+    wordsDStream.count().foreachRDD(
+        countRDD => {globalRDDCount += countRDD.first()}
+    )
 
     // Map each word to a (word, 1) tuple so we can reduce/aggregate by key. 
     val wordCountsMappedDStream = wordsDStream.map(word => (word, 1))
@@ -182,8 +185,8 @@ object AdvancedKinesisWordCountASL extends Logging {
       windowRDDBatch => windowRDDBatch.sortByKey(true))
 
     // Materialize and print the counts by window 
-    wordCountsByWindowSortedDStream.foreach(rdd => {
-      rdd.foreach(row => println((row._1, row._2,  globalBatchCount, globalRDDCount, globalSum)))
+    wordCountsByWindowSortedDStream.foreach(rddBatch => {
+      rddBatch.foreach(row => println(s"windowCounts(${row._1}, ${row._2})"))
     })
 
     /**
@@ -218,7 +221,7 @@ object AdvancedKinesisWordCountASL extends Logging {
 
     // Materialize and print the totals
     wordCountTotalsSortedDStream.foreach(rddBatch => {
-      rddBatch.foreach(row => println((row._1, row._2, globalBatchCount, globalRDDCount, globalSum)))
+      rddBatch.foreach(row => println(s"globalCounts(${row._1}, ${row._2}), globalNumBatches(${globalBatchCount}), globalNumElements(${globalRDDCount}), globalSum(${globalSum})"))
     })
 
     // Start the streaming context and await termination 

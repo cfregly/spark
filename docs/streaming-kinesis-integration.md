@@ -36,7 +36,6 @@ A Kinesis stream can be set up at one of the valid Kinesis endpoints with 1 or m
 
 	See the [API docs](api/scala/index.html#org.apache.spark.streaming.kinesis.KinesisUtils$)
 	and the [example]({{site.SPARK_GITHUB_URL}}/tree/master/extras/kinesis-asl/src/main/scala/org/apache/spark/examples/streaming/KinesisWordCountASL.scala). Refer to the Running the Example section for instructions on how to run the example.
-
 	</div>
 	<div data-lang="java" markdown="1">
 		import org.apache.spark.streaming.Duration;
@@ -48,7 +47,6 @@ A Kinesis stream can be set up at one of the valid Kinesis endpoints with 1 or m
 
 	See the [API docs](api/java/index.html?org/apache/spark/streaming/kinesis/KinesisUtils.html)
 	and the [example]({{site.SPARK_GITHUB_URL}}/tree/master/extras/kinesis-asl/src/main/java/org/apache/spark/examples/streaming/JavaKinesisWordCountASL.java). Refer to the next subsection for instructions to run the example.
-
 	</div>
 	</div>
 
@@ -117,18 +115,15 @@ To run the example,
 
 - Set up the environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_KEY with your AWS credentials.
 
-- In the Spark root directory, run the example as
+- In the Spark root directory, run the example as follows:
+
 
 	<div class="codetabs">
 	<div data-lang="scala" markdown="1">
-
     	bin/run-example streaming.KinesisWordCountASL [Kinesis stream name] [endpoint URL]
-
 	</div>
 	<div data-lang="java" markdown="1">
-
         bin/run-example streaming.JavaKinesisWordCountASL [Kinesis stream name] [endpoint URL]
-
 	</div>
 	</div>
 
@@ -148,3 +143,60 @@ To run the example,
 - If no Kinesis checkpoint info exists when the input DStream starts, it will start either from the oldest record available (InitialPositionInStream.TRIM_HORIZON) or from the latest tip (InitialPostitionInStream.LATEST).  This is configurable.
 - InitialPositionInStream.LATEST could lead to missed records if data is added to the stream while no input DStreams are running (and no checkpoint info is being stored). 
 - InitialPositionInStream.TRIM_HORIZON may lead to duplicate processing of records where the impact is dependent on checkpoint frequency and processing idempotency.
+
+#### AWS IAM Roles for Kinesis
+If you plan to use AWS IAM Roles to allow separate AWS credentials for different users, you need to setup IAM Users as well as IAM Policies for Kinesis, DynamoDB, and CloudWatch as follows:
+
+***Create IAM Users***
+
+- http://docs.aws.amazon.com/IAM/latest/UserGuide/Using_SettingUpUser.html
+- https://console.aws.amazon.com/iam/home?#security_credential 
+
+***Set up the Kinesis, DynamoDB, and CloudWatch IAM Policies***
+
+- http://docs.aws.amazon.com/kinesis/latest/dev/kinesis-using-iam.html
+- *IAM Policy Generator*  http://awspolicygen.s3.amazonaws.com/policygen.html
+
+***Attach the Policies to the IAM Users*** 
+
+- https://console.aws.amazon.com/iam/home?#users
+- Select the User
+- Select Attach Policy
+- Select Custom Policy
+- Paste in the Policy JSON 
+
+***Example Policy JSON*** 
+
+- Below is an example Policy JSON generated using the Policy Generator.  
+- Just fill in the missing <pieces> to match your environment.
+- The region of the DynamoDB table is intentionally hard-coded to us-east-1 as this is how Kinesis currently works.
+- The DynamoDB table is the same as the application name of the Kinesis Streaming Application.  The sample included with the Spark distribution uses KinesisWordCount for the application/table name.
+
+		{
+		  "Statement": [
+		    {
+		      "Sid": "Stmt1414784467497",
+		      "Action": "kinesis:*",
+		      "Effect": "Allow",
+		      "Resource": "arn:aws:kinesis:<region-of-stream>:<aws-account-id>:stream/<stream-name>"
+		    },
+		    {
+		      "Sid": "Stmt1414784693732",
+		      "Action": "dynamodb:*",
+		      "Effect": "Allow",
+		      "Resource": "arn:aws:dynamodb:us-east-1:<aws-account-id>:table/<dynamodb-tablename>"
+		    },
+		    {
+		      "Sid": "Stmt1414785131046",
+		      "Action": "cloudwatch:*",
+		      "Effect": "Allow",
+		      "Resource": "*"
+		    }
+		  ]
+		}
+
+***Notes***
+
+- The region of the DynamoDB table is intentionally hard-coded to us-east-1 as this is how Kinesis currently works
+- The DynamoDB table is the same as the application name of the Kinesis Streaming Application.  The sample included with the Spark distribution uses KinesisWordCount for the application/table name.  
+

@@ -144,30 +144,21 @@ To run the example,
 - InitialPositionInStream.LATEST could lead to missed records if data is added to the stream while no input DStreams are running (and no checkpoint info is being stored). 
 - InitialPositionInStream.TRIM_HORIZON may lead to duplicate processing of records where the impact is dependent on checkpoint frequency and processing idempotency.
 
-#### AWS IAM Roles for Kinesis
-If you plan to use AWS IAM Roles to allow separate AWS credentials for different users, you need to setup IAM Users as well as IAM Policies for Kinesis, DynamoDB, and CloudWatch as follows:
+#### AWS IAM Roles for Spark-Kinesis Integration 
+If you plan to use AWS IAM Roles to allow separate AWS credentials for users or EC2 Instances, you need to setup IAM Policies for Kinesis, DynamoDB, and CloudWatch as follows:
 
-***Create IAM Users***
-
-- http://docs.aws.amazon.com/IAM/latest/UserGuide/Using_SettingUpUser.html
-- https://console.aws.amazon.com/iam/home?#security_credential 
-
-***Set up the Kinesis, DynamoDB, and CloudWatch IAM Policies***
+**Create the Kinesis, DynamoDB, and CloudWatch IAM Policies**
 
 - http://docs.aws.amazon.com/kinesis/latest/dev/kinesis-using-iam.html
-- *IAM Policy Generator*  http://awspolicygen.s3.amazonaws.com/policygen.html
 
-***Attach the Policies to the IAM Users*** 
+***IAM Policy Generator***
 
-- https://console.aws.amazon.com/iam/home?#users
-- Select the User
-- Select Attach Policy
-- Select Custom Policy
-- Paste in the Policy JSON 
+- http://awspolicygen.s3.amazonaws.com/policygen.html
 
-***Example Policy JSON*** 
+***Example Policy JSON***
 
-- Below is an example Policy JSON generated using the Policy Generator.  
+Below is an example Policy JSON generated using the Policy Generator.  
+
 - Just fill in the missing <pieces> to match your environment.
 - The region of the DynamoDB table is intentionally hard-coded to us-east-1 as this is how Kinesis currently works.
 - The DynamoDB table is the same as the application name of the Kinesis Streaming Application.  The sample included with the Spark distribution uses KinesisWordCount for the application/table name.
@@ -199,4 +190,28 @@ If you plan to use AWS IAM Roles to allow separate AWS credentials for different
 
 - The region of the DynamoDB table is intentionally hard-coded to us-east-1 as this is how Kinesis currently works
 - The DynamoDB table is the same as the application name of the Kinesis Streaming Application.  The sample included with the Spark distribution uses KinesisWordCount for the application/table name.  
+
+**Attach the Policies**
+ 
+You can attach IAM Policies to IAM Users and EC2 Instances.
+ 
+***IAM Users***
+
+Create your IAM users
+
+- http://docs.aws.amazon.com/IAM/latest/UserGuide/Using_SettingUpUser.html
+- https://console.aws.amazon.com/iam/home?#security_credential 
+
+Attach the Policies to the IAM Users
+
+- https://console.aws.amazon.com/iam/home?#users
+- Select the User
+- Select Attach Policy
+- Select Custom Policy
+- Paste in the Policy JSON 
+
+***EC2 Instances***
+
+- http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html
+- You can only attach IAM Policies to instances at launch time
 

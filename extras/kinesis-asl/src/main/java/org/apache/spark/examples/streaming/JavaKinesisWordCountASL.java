@@ -102,6 +102,10 @@ public final class JavaKinesisWordCountASL { // needs to be public for access fr
         /* Populate the appropriate variables from the given args */
         String streamName = args[0];
         String endpointUrl = args[1];
+        
+        String awsAccessKeyId = null;
+        String awsSecretKey = null;
+        
         /* Set the batch interval to a fixed 2000 millis (2 seconds) */
         Duration batchInterval = new Duration(2000);
 
@@ -130,8 +134,9 @@ public final class JavaKinesisWordCountASL { // needs to be public for access fr
         List<JavaDStream<byte[]>> streamsList = new ArrayList<JavaDStream<byte[]>>(numStreams);
         for (int i = 0; i < numStreams; i++) {
           streamsList.add(
-            KinesisUtils.createStream(jssc, streamName, endpointUrl, checkpointInterval, 
-            InitialPositionInStream.LATEST, StorageLevel.MEMORY_AND_DISK_2())
+            KinesisUtils.createJavaStream("KinesisWordCount", jssc, streamName, endpointUrl,  
+            	      awsAccessKeyId, awsSecretKey, checkpointInterval, 
+            	      InitialPositionInStream.LATEST, StorageLevel.MEMORY_AND_DISK_2())
           );
         }
 

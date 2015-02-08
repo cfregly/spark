@@ -65,6 +65,8 @@ private[kinesis] class KinesisReceiver(
     appName: String,
     streamName: String,
     endpointUrl: String,
+    awsAccessKeyId: String,
+    awsSecretKey: String,
     checkpointInterval: Duration,
     initialPositionInStream: InitialPositionInStream,
     storageLevel: StorageLevel)
@@ -119,7 +121,13 @@ private[kinesis] class KinesisReceiver(
    */
   override def onStart() {
     workerId = InetAddress.getLocalHost.getHostAddress() + ":" + UUID.randomUUID()
-    credentialsProvider = new DefaultAWSCredentialsProviderChain()
+
+    System.getProperties().setProperty("aws.accessKeyId", awsAccessKeyId)
+    System.getProperties().setProperty("aws.secretKey", awsSecretKey)
+
+    credentialsProvider = 
+      //new BasicAWSCredentials(awsAccessKeyId, awsSecretKey)
+      new DefaultAWSCredentialsProviderChain()
     kinesisClientLibConfiguration = new KinesisClientLibConfiguration(appName, streamName,
       credentialsProvider, workerId).withKinesisEndpoint(endpointUrl)
       .withInitialPositionInStream(initialPositionInStream).withTaskBackoffTimeMillis(500)

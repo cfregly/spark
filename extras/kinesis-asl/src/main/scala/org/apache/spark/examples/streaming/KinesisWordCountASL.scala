@@ -95,6 +95,10 @@ private object KinesisWordCountASL extends Logging {
     /* Determine the number of shards from the stream */
     val kinesisClient = new AmazonKinesisClient(new DefaultAWSCredentialsProviderChain())
     kinesisClient.setEndpoint(endpointUrl)
+    
+    val awsAccessKeyId = null;
+    val awsSecretKey = null;
+
     val numShards = kinesisClient.describeStream(streamName).getStreamDescription().getShards()
       .size()
 
@@ -112,7 +116,8 @@ private object KinesisWordCountASL extends Logging {
 
     /* Create the same number of Kinesis DStreams/Receivers as Kinesis stream's shards */
     val kinesisStreams = (0 until numStreams).map { i =>
-      KinesisUtils.createStream(ssc, streamName, endpointUrl, kinesisCheckpointInterval,
+      KinesisUtils.createStream("KinesisWordCount", ssc, streamName, endpointUrl, 
+          awsAccessKeyId, awsSecretKey, kinesisCheckpointInterval,
           InitialPositionInStream.LATEST, StorageLevel.MEMORY_AND_DISK_2)
     }
 

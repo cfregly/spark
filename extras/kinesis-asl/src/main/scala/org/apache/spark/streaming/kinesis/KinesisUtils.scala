@@ -54,14 +54,18 @@ object KinesisUtils {
    */
   @Experimental
   def createStream(
+      appName:  String,
       ssc: StreamingContext,
       streamName: String,
       endpointUrl: String,
+      awsAccessKeyId: String,
+      awsSecretKey: String,
       checkpointInterval: Duration,
       initialPositionInStream: InitialPositionInStream,
       storageLevel: StorageLevel): ReceiverInputDStream[Array[Byte]] = {
-    ssc.receiverStream(new KinesisReceiver(ssc.sc.appName, streamName, endpointUrl,
-        checkpointInterval, initialPositionInStream, storageLevel))
+    ssc.receiverStream(new KinesisReceiver(appName, streamName, endpointUrl,
+            awsAccessKeyId, awsSecretKey, checkpointInterval, initialPositionInStream, 
+            storageLevel))
   }
 
   /**
@@ -84,14 +88,18 @@ object KinesisUtils {
    * @return JavaReceiverInputDStream[Array[Byte]]
    */
   @Experimental
-  def createStream(
+  def createJavaStream(
+	  appName:  String,
       jssc: JavaStreamingContext, 
       streamName: String, 
       endpointUrl: String, 
+      awsAccessKeyId: String,
+      awsSecretKey: String,
       checkpointInterval: Duration,
       initialPositionInStream: InitialPositionInStream,
       storageLevel: StorageLevel): JavaReceiverInputDStream[Array[Byte]] = {
-    jssc.receiverStream(new KinesisReceiver(jssc.ssc.sc.appName, streamName,
-        endpointUrl, checkpointInterval, initialPositionInStream, storageLevel))
+    jssc.receiverStream(new KinesisReceiver(appName, streamName,
+        endpointUrl, awsAccessKeyId, awsSecretKey, checkpointInterval, initialPositionInStream,
+        storageLevel))
   }
 }

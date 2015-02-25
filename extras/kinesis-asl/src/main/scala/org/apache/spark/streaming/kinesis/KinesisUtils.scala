@@ -23,9 +23,9 @@ import org.apache.spark.streaming.StreamingContext
 import org.apache.spark.streaming.api.java.JavaReceiverInputDStream
 import org.apache.spark.streaming.api.java.JavaStreamingContext
 import org.apache.spark.streaming.dstream.ReceiverInputDStream
-
 import com.amazonaws.auth.AWSCredentialsProvider
 import com.amazonaws.services.kinesis.clientlibrary.lib.worker.InitialPositionInStream
+import com.amazonaws.auth.DefaultAWSCredentialsProviderChain
 
 /**
  * Helper class to create Amazon Kinesis Input Stream
@@ -52,9 +52,12 @@ object KinesisUtils {
    *                                 per Kinesis' limit of 24 hours
    *                                 (InitialPositionInStream.TRIM_HORIZON) or
    *                                 the tip of the stream (InitialPositionInStream.LATEST).
-   * @param storageLevel Storage level to use for storing the received objects
-   * @param credentialsProvider  (optional) implementation of AWSCredentialsProvider 
-   * 
+   * @param storageLevel Storage level to use for storing the received objects 
+   * 					(StorageLevel.MEMORY_AND_DISK_2, StorageLevel.MEMORY_ONLY_2, etc)
+   * @param credentialsProvider  implementation of AWSCredentialsProvider.
+   *                             Note: For BasicAWSCredentials, use the BasicAWSCredentialsProvider
+   *                               provided in this package.
+   *                               
    * @return ReceiverInputDStream[Array[Byte]]
    */
   @Experimental
@@ -92,13 +95,16 @@ object KinesisUtils {
    *                                 (InitialPositionInStream.TRIM_HORIZON) or
    *                                 the tip of the stream (InitialPositionInStream.LATEST).
    * @param storageLevel Storage level to use for storing the received objects
-   * @param credentialsProvider  (optional) implementation of AWSCredentialsProvider 
-   * 
+   *                     (StorageLevel.MEMORY_AND_DISK_2, StorageLevel.MEMORY_ONLY_2, etc)
+   * @param credentialsProvider  implementation of AWSCredentialsProvider.
+   *                             Note: For BasicAWSCredentials, use the BasicAWSCredentialsProvider
+   *                               provided in this package.
+   *                               
    * @return JavaReceiverInputDStream[Array[Byte]]
    */
   @Experimental
   def createStream(
-	  appName:  String,
+      appName:  String,
       jssc: JavaStreamingContext, 
       streamName: String, 
       endpointUrl: String, 

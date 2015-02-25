@@ -101,7 +101,7 @@ private[kinesis] class KinesisReceiver(
     
     // KCL config instance
     val kinesisClientLibConfiguration = new KinesisClientLibConfiguration(appName, streamName,
-      resolveCredentialsProvider(), workerId).withKinesisEndpoint(endpointUrl)
+       credentialsProvider, workerId).withKinesisEndpoint(endpointUrl)
       .withInitialPositionInStream(initialPositionInStream).withTaskBackoffTimeMillis(500)
       
    /*
@@ -137,11 +137,11 @@ private[kinesis] class KinesisReceiver(
    * If a credentialsProvider was not passed in, the DefaultAWSCredentialsProviderChain is used.
    * The DefaultAWSCredentialsProviderChain searches for credentials in the following order of 
    * precedence:
-   * 	Environment Variables - AWS_ACCESS_KEY_ID and AWS_SECRET_KEY
-   * 	Java System Properties - aws.accessKeyId and aws.secretKey
-   * 	Credential profiles file at the default location (~/.aws/credentials) shared by all 
-   *   		AWS SDKs and the AWS CLI
-   * 	Instance profile credentials delivered through the Amazon EC2 metadata service
+   *    Environment Variables - AWS_ACCESS_KEY_ID and AWS_SECRET_KEY
+   *    Java System Properties - aws.accessKeyId and aws.secretKey
+   *    Credential profiles file at the default location (~/.aws/credentials) shared by all 
+   *      AWS SDKs and the AWS CLI
+   *    Instance profile credentials delivered through the Amazon EC2 metadata service
    */
    def resolveCredentialsProvider(): AWSCredentialsProvider = {
      if (credentialsProvider != null) credentialsProvider

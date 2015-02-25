@@ -18,24 +18,20 @@
 package org.apache.spark.examples.streaming
 
 import java.nio.ByteBuffer
-
 import scala.util.Random
-
-import org.apache.log4j.Level
-import org.apache.log4j.Logger
 import org.apache.spark.Logging
 import org.apache.spark.SparkConf
-import org.apache.spark.annotation.Experimental
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.Milliseconds
 import org.apache.spark.streaming.StreamingContext
-import org.apache.spark.streaming.dstream.DStream.toPairDStreamFunctions
+import org.apache.spark.streaming.StreamingContext.toPairDStreamFunctions
 import org.apache.spark.streaming.kinesis.KinesisUtils
-
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain
 import com.amazonaws.services.kinesis.AmazonKinesisClient
 import com.amazonaws.services.kinesis.clientlibrary.lib.worker.InitialPositionInStream
 import com.amazonaws.services.kinesis.model.PutRecordRequest
+import org.apache.log4j.Logger
+import org.apache.log4j.Level
 
 /**
  * Kinesis Spark Streaming WordCount example.
@@ -121,8 +117,8 @@ private object KinesisWordCountASL extends Logging {
     /* Create the same number of Kinesis DStreams/Receivers as Kinesis stream's shards */
     val kinesisStreams = (0 until numStreams).map { i =>
       KinesisUtils.createStream("KinesisWordCount", ssc, streamName, endpointUrl, 
-          kinesisCheckpointInterval, InitialPositionInStream.LATEST, StorageLevel.MEMORY_AND_DISK_2,
-          new DefaultAWSCredentialsProviderChain())
+          awsAccessKeyId, awsSecretKey, kinesisCheckpointInterval,
+          InitialPositionInStream.LATEST, StorageLevel.MEMORY_AND_DISK_2)
     }
 
     /* Union all the streams */

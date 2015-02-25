@@ -24,8 +24,8 @@ import org.apache.spark.streaming.api.java.JavaReceiverInputDStream
 import org.apache.spark.streaming.api.java.JavaStreamingContext
 import org.apache.spark.streaming.dstream.ReceiverInputDStream
 
-import com.amazonaws.auth.AWSCredentialsProvider
 import com.amazonaws.services.kinesis.clientlibrary.lib.worker.InitialPositionInStream
+
 
 /**
  * Helper class to create Amazon Kinesis Input Stream
@@ -36,10 +36,6 @@ object KinesisUtils {
   /**
    * Create an InputDStream that pulls messages from a Kinesis stream.
    * :: Experimental ::
-   * @param appName  Kinesis application name. Kinesis Apps are mapped to Kinesis Streams
-   *                 by the Kinesis Client Library.  If you change the App name or Stream name,
-   *                 the KCL will throw errors.  This usually requires deleting the backing  
-   *                 DynamoDB table with the same name this Kinesis application.
    * @param ssc    StreamingContext object
    * @param streamName   Kinesis stream name
    * @param endpointUrl  Url of Kinesis service (e.g., https://kinesis.us-east-1.amazonaws.com)
@@ -53,8 +49,7 @@ object KinesisUtils {
    *                                 (InitialPositionInStream.TRIM_HORIZON) or
    *                                 the tip of the stream (InitialPositionInStream.LATEST).
    * @param storageLevel Storage level to use for storing the received objects
-   * @param credentialsProvider  (optional) implementation of AWSCredentialsProvider 
-   * 
+   *
    * @return ReceiverInputDStream[Array[Byte]]
    */
   @Experimental
@@ -63,22 +58,19 @@ object KinesisUtils {
       ssc: StreamingContext,
       streamName: String,
       endpointUrl: String,
+      awsAccessKeyId: String,
+      awsSecretKey: String,
       checkpointInterval: Duration,
       initialPositionInStream: InitialPositionInStream,
-      storageLevel: StorageLevel,
-      credentialsProvider: AWSCredentialsProvider
-      ): ReceiverInputDStream[Array[Byte]] = {
-    ssc.receiverStream(new KinesisReceiver(appName, streamName, endpointUrl, checkpointInterval, 
-      initialPositionInStream, storageLevel, credentialsProvider))
+      storageLevel: StorageLevel): ReceiverInputDStream[Array[Byte]] = {
+    ssc.receiverStream(new KinesisReceiver(appName, streamName, endpointUrl,
+            awsAccessKeyId, awsSecretKey, checkpointInterval, initialPositionInStream, 
+            storageLevel))
   }
 
   /**
    * Create a Java-friendly InputDStream that pulls messages from a Kinesis stream.
    * :: Experimental ::
-   * @param appName  Kinesis application name. Kinesis Apps are mapped to Kinesis Streams
-   *                 by the Kinesis Client Library.  If you change the App name or Stream name,
-   *                 the KCL will throw errors.  This usually requires deleting the backing  
-   *                 DynamoDB table with the same name this Kinesis application.
    * @param jssc Java StreamingContext object
    * @param streamName   Kinesis stream name
    * @param endpointUrl  Url of Kinesis service (e.g., https://kinesis.us-east-1.amazonaws.com)
@@ -92,22 +84,22 @@ object KinesisUtils {
    *                                 (InitialPositionInStream.TRIM_HORIZON) or
    *                                 the tip of the stream (InitialPositionInStream.LATEST).
    * @param storageLevel Storage level to use for storing the received objects
-   * @param credentialsProvider  (optional) implementation of AWSCredentialsProvider 
-   * 
+   *
    * @return JavaReceiverInputDStream[Array[Byte]]
    */
   @Experimental
-  def createStream(
+  def createJavaStream(
 	  appName:  String,
       jssc: JavaStreamingContext, 
       streamName: String, 
       endpointUrl: String, 
+      awsAccessKeyId: String,
+      awsSecretKey: String,
       checkpointInterval: Duration,
       initialPositionInStream: InitialPositionInStream,
-      storageLevel: StorageLevel,
-      credentialsProvider: AWSCredentialsProvider
-      ): JavaReceiverInputDStream[Array[Byte]] = {
-    jssc.receiverStream(new KinesisReceiver(appName, streamName, endpointUrl, checkpointInterval, 
-      initialPositionInStream, storageLevel, credentialsProvider))
+      storageLevel: StorageLevel): JavaReceiverInputDStream[Array[Byte]] = {
+    jssc.receiverStream(new KinesisReceiver(appName, streamName,
+        endpointUrl, awsAccessKeyId, awsSecretKey, checkpointInterval, initialPositionInStream,
+        storageLevel))
   }
 }

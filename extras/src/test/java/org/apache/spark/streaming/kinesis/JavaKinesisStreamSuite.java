@@ -23,7 +23,6 @@ import org.apache.spark.streaming.LocalJavaStreamingContext;
 import org.apache.spark.streaming.api.java.JavaDStream;
 import org.junit.Test;
 
-import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.services.kinesis.clientlibrary.lib.worker.InitialPositionInStream;
 
 /**
@@ -33,10 +32,9 @@ public class JavaKinesisStreamSuite extends LocalJavaStreamingContext {
   @Test
   public void testKinesisStream() {
     // Tests the API, does not actually test data receiving
-    JavaDStream<byte[]> kinesisStream = KinesisUtils.createStream("AppName", ssc, "mySparkStream",
-        "https://kinesis.us-west-2.amazonaws.com", new Duration(2000), 
-        InitialPositionInStream.LATEST, StorageLevel.MEMORY_AND_DISK_2(), 
-        new DefaultAWSCredentialsProviderChain());
+    JavaDStream<byte[]> kinesisStream = KinesisUtils.createJavaStream("AppName", ssc, "mySparkStream",
+        "https://kinesis.us-west-2.amazonaws.com", "awsAccessKeyId", "awsSecretKey", new Duration(2000), 
+        InitialPositionInStream.LATEST, StorageLevel.MEMORY_AND_DISK_2());
     
     ssc.stop();
   }

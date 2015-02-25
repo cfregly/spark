@@ -36,10 +36,11 @@ import com.amazonaws.services.kinesis.clientlibrary.lib.worker.Worker
  * Custom AWS Kinesis-specific implementation of Spark Streaming's Receiver.
  * This implementation relies on the Kinesis Client Library (KCL) Worker as described here:
  * https://github.com/awslabs/amazon-kinesis-client
- * This is a custom receiver used with StreamingContext.receiverStream(Receiver) as described here:
- *   http://spark.apache.org/docs/latest/streaming-custom-receivers.html
- * Instances of this class will get shipped to the Spark Streaming Workers to run within a 
- *   Spark Executor.
+ * This is a custom receiver used with StreamingContext.receiverStream(Receiver) 
+ *   as described here:
+ *     http://spark.apache.org/docs/latest/streaming-custom-receivers.html
+ * Instances of this class will get shipped to the Spark Streaming Workers 
+ *   to run within a Spark Executor.
  *
  * @param appName  Kinesis application name. Kinesis Apps are mapped to Kinesis Streams
  *                 by the Kinesis Client Library.  If you change the App name or Stream name,
@@ -57,7 +58,6 @@ import com.amazonaws.services.kinesis.clientlibrary.lib.worker.Worker
  *                                 (InitialPositionInStream.TRIM_HORIZON) or
  *                                 the tip of the stream (InitialPositionInStream.LATEST).
  * @param storageLevel Storage level to use for storing the received objects
- * @param credentialsProvider  implementation of AWSCredentialsProvider
  *
  * @return ReceiverInputDStream[Array[Byte]]   
  */
@@ -65,11 +65,12 @@ private[kinesis] class KinesisReceiver(
     appName: String,
     streamName: String,
     endpointUrl: String,
+    awsAccessKeyId: String,
+    awsSecretKey: String,
     checkpointInterval: Duration,
     initialPositionInStream: InitialPositionInStream,
-    storageLevel: StorageLevel,
-    credentialsProvider: AWSCredentialsProvider
-  ) extends Receiver[Array[Byte]](storageLevel) with Logging { receiver =>
+    storageLevel: StorageLevel)
+  extends Receiver[Array[Byte]](storageLevel) with Logging { receiver =>
 
   /*
    * The following vars are built in the onStart() method which executes in the Spark Worker after
@@ -80,7 +81,29 @@ private[kinesis] class KinesisReceiver(
    *  workerId should be based on the ip address of the actual Spark Worker where this code runs
    *   (not the Driver's ip address.)
    */
-   var workerId: String = null
+  var workerId: String = null
+
+  /*
+   * This impl uses the DefaultAWSCredentialsProviderChain and searches for credentials 
+   *   in the following order of precedence:
+   * Environment Variables - AWS_ACCESS_KEY_ID and AWS_SECRET_KEY
+   * Java System Properties - aws.accessKeyId and aws.secretKey
+   * Credential profiles file at the default location (~/.aws/credentials) shared by all 
+   *   AWS SDKs and the AWS CLI
+   * Instance profile credentials delivered through the Amazon EC2 metadata service
+   */
+  var credentialsProvider: AWSCredentialsProvider = null
+
+  /* KCL config instance. */
+  var kinesisClientLibConfiguration: KinesisClientLibConfiguration = null
+
+  /*
+   *  RecordProcessorFactory creates impls of IRecordProcessor.
+   *  IRecordProcessor adapts the KCL to our Spark KinesisReceiver via the 
+   *    IRecordProcessor.processRecords() method.
+   *  We're using our custom KinesisRecordProcessor in this case.
+   */
+  var recordProcessorFactory: IRecordProcessorFactory = null
 
   /*
    * Create a Kinesis Worker.
@@ -98,26 +121,22 @@ private[kinesis] class KinesisReceiver(
    */
   override def onStart() {
     workerId = InetAddress.getLocalHost.getHostAddress() + ":" + UUID.randomUUID()
-    
-    // KCL config instance
-    val kinesisClientLibConfiguration = new KinesisClientLibConfiguration(appName, streamName,
-      resolveCredentialsProvider(), workerId).withKinesisEndpoint(endpointUrl)
+
+    System.getProperties().setProperty("aws.accessKeyId", awsAccessKeyId)
+    System.getProperties().setProperty("aws.secretKey", awsSecretKey)
+
+    credentialsProvider = 
+      //new BasicAWSCredentials(awsAccessKeyId, awsSecretKey)
+      new DefaultAWSCredentialsProviderChain()
+    kinesisClientLibConfiguration = new KinesisClientLibConfiguration(appName, streamName,
+      credentialsProvider, workerId).withKinesisEndpoint(endpointUrl)
       .withInitialPositionInStream(initialPositionInStream).withTaskBackoffTimeMillis(500)
-      
-   /*
-    *  RecordProcessorFactory creates impls of IRecordProcessor.
-    *  IRecordProcessor adapts the KCL to our Spark KinesisReceiver via the 
-    *    IRecordProcessor.processRecords() method.
-    *  We're using our custom KinesisRecordProcessor in this case.
-    */
-    val recordProcessorFactory = new IRecordProcessorFactory {
+    recordProcessorFactory = new IRecordProcessorFactory {
       override def createProcessor: IRecordProcessor = new KinesisRecordProcessor(receiver,
         workerId, new KinesisCheckpointState(checkpointInterval))
     }
-    
     worker = new Worker(recordProcessorFactory, kinesisClientLibConfiguration)
     worker.run()
-    
     logInfo(s"Started receiver with workerId $workerId")
   }
 
@@ -127,24 +146,12 @@ private[kinesis] class KinesisReceiver(
    *  The KCL will do its best to drain and checkpoint any in-flight records upon shutdown.
    */
   override def onStop() {
-    if (worker != null) worker.shutdown()
+    worker.shutdown()
     logInfo(s"Shut down receiver with workerId $workerId")
     workerId = null
+    credentialsProvider = null
+    kinesisClientLibConfiguration = null
+    recordProcessorFactory = null
     worker = null
   }
-  
-  /*
-   * If a credentialsProvider was not passed in, the DefaultAWSCredentialsProviderChain is used.
-   * The DefaultAWSCredentialsProviderChain searches for credentials in the following order of 
-   * precedence:
-   * 	Environment Variables - AWS_ACCESS_KEY_ID and AWS_SECRET_KEY
-   * 	Java System Properties - aws.accessKeyId and aws.secretKey
-   * 	Credential profiles file at the default location (~/.aws/credentials) shared by all 
-   *   		AWS SDKs and the AWS CLI
-   * 	Instance profile credentials delivered through the Amazon EC2 metadata service
-   */
-   def resolveCredentialsProvider(): AWSCredentialsProvider = {
-     if (credentialsProvider != null) credentialsProvider
-     else new DefaultAWSCredentialsProviderChain()
-   }  
 }

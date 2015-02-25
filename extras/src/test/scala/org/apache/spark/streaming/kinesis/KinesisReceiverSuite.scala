@@ -17,17 +17,21 @@
 package org.apache.spark.streaming.kinesis
 
 import java.nio.ByteBuffer
+
 import scala.collection.JavaConversions.seqAsJavaList
+
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.Milliseconds
 import org.apache.spark.streaming.Seconds
 import org.apache.spark.streaming.StreamingContext
 import org.apache.spark.streaming.TestSuiteBase
 import org.apache.spark.util.{ManualClock, Clock}
+
 import org.mockito.Mockito._
 import org.scalatest.BeforeAndAfter
 import org.scalatest.Matchers
 import org.scalatest.mock.MockitoSugar
+
 import com.amazonaws.services.kinesis.clientlibrary.exceptions.InvalidStateException
 import com.amazonaws.services.kinesis.clientlibrary.exceptions.KinesisClientLibDependencyException
 import com.amazonaws.services.kinesis.clientlibrary.exceptions.ShutdownException
@@ -36,7 +40,6 @@ import com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorC
 import com.amazonaws.services.kinesis.clientlibrary.lib.worker.InitialPositionInStream
 import com.amazonaws.services.kinesis.clientlibrary.types.ShutdownReason
 import com.amazonaws.services.kinesis.model.Record
-import com.amazonaws.auth.DefaultAWSCredentialsProviderChain
 
 /**
  * Suite of Kinesis streaming receiver tests focusing mostly on the KinesisRecordProcessor
@@ -82,8 +85,8 @@ class KinesisReceiverSuite extends TestSuiteBase with Matchers with BeforeAndAft
     val ssc = new StreamingContext(master, framework, batchDuration)
     // Tests the API, does not actually test data receiving
     val kinesisStream = KinesisUtils.createStream("AppName", ssc, "mySparkStream",
-      "https://kinesis.us-west-2.amazonaws.com", Seconds(2), InitialPositionInStream.LATEST, 
-      StorageLevel.MEMORY_AND_DISK_2, new DefaultAWSCredentialsProviderChain());
+      "https://kinesis.us-west-2.amazonaws.com", "accessKeyId", "secretKey", Seconds(2),
+      InitialPositionInStream.LATEST, StorageLevel.MEMORY_AND_DISK_2);
     ssc.stop()
   }
 

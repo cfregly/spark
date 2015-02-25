@@ -25,7 +25,6 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFunction;
-import org.apache.spark.examples.streaming.StreamingExamples;
 import org.apache.spark.storage.StorageLevel;
 import org.apache.spark.streaming.Duration;
 import org.apache.spark.streaming.api.java.JavaDStream;
@@ -104,6 +103,9 @@ public final class JavaKinesisWordCountASL { // needs to be public for access fr
         String streamName = args[0];
         String endpointUrl = args[1];
         
+        String awsAccessKeyId = null;
+        String awsSecretKey = null;
+        
         /* Set the batch interval to a fixed 2000 millis (2 seconds) */
         Duration batchInterval = new Duration(2000);
 
@@ -132,9 +134,9 @@ public final class JavaKinesisWordCountASL { // needs to be public for access fr
         List<JavaDStream<byte[]>> streamsList = new ArrayList<JavaDStream<byte[]>>(numStreams);
         for (int i = 0; i < numStreams; i++) {
           streamsList.add(
-            KinesisUtils.createStream("KinesisWordCount", jssc, streamName, endpointUrl,  
-            	      checkpointInterval, InitialPositionInStream.LATEST, 
-            	      StorageLevel.MEMORY_AND_DISK_2(), new DefaultAWSCredentialsProviderChain())
+            KinesisUtils.createJavaStream("KinesisWordCount", jssc, streamName, endpointUrl,  
+            	      awsAccessKeyId, awsSecretKey, checkpointInterval, 
+            	      InitialPositionInStream.LATEST, StorageLevel.MEMORY_AND_DISK_2())
           );
         }
 

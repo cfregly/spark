@@ -82,8 +82,8 @@ class KinesisReceiverSuite extends TestSuiteBase with Matchers with BeforeAndAft
     val ssc = new StreamingContext(master, framework, batchDuration)
     // Tests the API, does not actually test data receiving
     val kinesisStream = KinesisUtils.createStream("AppName", ssc, "mySparkStream",
-      "https://kinesis.us-west-2.amazonaws.com", Seconds(2), InitialPositionInStream.LATEST, 
-      StorageLevel.MEMORY_AND_DISK_2, new DefaultAWSCredentialsProviderChain());
+      "https://kinesis.us-west-2.amazonaws.com", null, null, Seconds(2), 
+      InitialPositionInStream.LATEST, StorageLevel.MEMORY_AND_DISK_2);
     ssc.stop()
   }
 

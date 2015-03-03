@@ -47,6 +47,8 @@ import com.amazonaws.services.kinesis.clientlibrary.lib.worker.Worker
  *                 DynamoDB table with the same name this Kinesis application.
  * @param streamName   Kinesis stream name
  * @param endpointUrl  Url of Kinesis service (e.g., https://kinesis.us-east-1.amazonaws.com)
+ * @param awsAccessKeyId  AWS AccessKeyId (if null, will use DefaultAWSCredentialsProviderChain)
+ * @param awsSecretKey  AWS SecretKey (if null, will use DefaultAWSCredentialsProviderChain)
  * @param checkpointInterval  Checkpoint interval for Kinesis checkpointing.
  *                            See the Kinesis Spark Streaming documentation for more
  *                            details on the different types of checkpoints.
@@ -57,7 +59,6 @@ import com.amazonaws.services.kinesis.clientlibrary.lib.worker.Worker
  *                                 (InitialPositionInStream.TRIM_HORIZON) or
  *                                 the tip of the stream (InitialPositionInStream.LATEST).
  * @param storageLevel Storage level to use for storing the received objects
- * @param credentialsProvider  implementation of AWSCredentialsProvider
  *
  * @return ReceiverInputDStream[Array[Byte]]   
  */
@@ -65,10 +66,11 @@ private[kinesis] class KinesisReceiver(
     appName: String,
     streamName: String,
     endpointUrl: String,
+    awsAccessKeyId: String,
+    awsSecretKey: String,
     checkpointInterval: Duration,
     initialPositionInStream: InitialPositionInStream,
-    storageLevel: StorageLevel,
-    credentialsProvider: AWSCredentialsProvider
+    storageLevel: StorageLevel
   ) extends Receiver[Array[Byte]](storageLevel) with Logging { receiver =>
 
   /*
@@ -101,7 +103,7 @@ private[kinesis] class KinesisReceiver(
     
     // KCL config instance
     val kinesisClientLibConfiguration = new KinesisClientLibConfiguration(appName, streamName,
-       credentialsProvider, workerId).withKinesisEndpoint(endpointUrl)
+       resolveAWSCredentialsProvider(), workerId).withKinesisEndpoint(endpointUrl)
       .withInitialPositionInStream(initialPositionInStream).withTaskBackoffTimeMillis(500)
       
    /*
@@ -134,8 +136,10 @@ private[kinesis] class KinesisReceiver(
   }
   
   /*
-   * If a credentialsProvider was not passed in, the DefaultAWSCredentialsProviderChain is used.
-   * The DefaultAWSCredentialsProviderChain searches for credentials in the following order of 
+   * If a aws credentials are passed in, use BasicAWSCredentialsProvider.
+   * Otherwise, use the DefaultAWSCredentialsProviderChain
+   * 
+   * Note:  DefaultAWSCredentialsProviderChain searches for credentials in the following order of 
    * precedence:
    *    Environment Variables - AWS_ACCESS_KEY_ID and AWS_SECRET_KEY
    *    Java System Properties - aws.accessKeyId and aws.secretKey
@@ -143,8 +147,11 @@ private[kinesis] class KinesisReceiver(
    *      AWS SDKs and the AWS CLI
    *    Instance profile credentials delivered through the Amazon EC2 metadata service
    */
-   def resolveCredentialsProvider(): AWSCredentialsProvider = {
-     if (credentialsProvider != null) credentialsProvider
-     else new DefaultAWSCredentialsProviderChain()
+   def resolveAWSCredentialsProvider(): AWSCredentialsProvider = {
+     if (awsAccessKeyId != null && awsSecretKey != null) { 
+       new BasicAWSCredentialsProvider(awsAccessKeyId, awsSecretKey)
+     } else {
+       new DefaultAWSCredentialsProviderChain()
+     }
    }  
 }

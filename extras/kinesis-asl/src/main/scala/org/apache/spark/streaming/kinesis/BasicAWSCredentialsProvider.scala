@@ -28,6 +28,10 @@ import com.amazonaws.auth.BasicAWSCredentials
  * Implementation of AWSCredentialsProvider for BasicAWSCredentials.
  * (Surprisingly, this is not part of the AWS Java SDK.)
  * 
+ * Note:  This is intentionally not Serializable to match the other AWSCredentials implementations.
+ *        Making this Serializable will likely lead to NotSerializableExceptions when migrating
+ *        to different AWSCredentials impls such as DefaultAWSCredentialsProviderChain.
+ *
  * @param accessKey   AWS Access Key
  * @param secretKey  AWS Secret Key
  */

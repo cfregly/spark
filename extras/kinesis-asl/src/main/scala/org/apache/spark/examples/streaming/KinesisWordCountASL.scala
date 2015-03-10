@@ -19,22 +19,22 @@ package org.apache.spark.examples.streaming
 
 import java.nio.ByteBuffer
 import scala.util.Random
-import org.apache.log4j.Level
-import org.apache.log4j.Logger
 import org.apache.spark.Logging
 import org.apache.spark.SparkConf
-import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.annotation.Experimental
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.Milliseconds
 import org.apache.spark.streaming.StreamingContext
 import org.apache.spark.streaming.dstream.DStream.toPairDStreamFunctions
-import org.apache.spark.streaming.kinesis.BasicAWSCredentialsProvider
 import org.apache.spark.streaming.kinesis.KinesisUtils
-import com.amazonaws.services.kinesis.AmazonKinesisClient
+import org.apache.spark.streaming.kinesis.KinesisReceiver
 import com.amazonaws.services.kinesis.clientlibrary.lib.worker.InitialPositionInStream
+import com.amazonaws.auth.BasicAWSCredentials
+import com.amazonaws.services.kinesis.AmazonKinesisClient
 import com.amazonaws.services.kinesis.model.PutRecordRequest
-import org.apache.spark.SparkContext
+import org.apache.log4j.Logger
+import org.apache.log4j.Level
+
+
 
 /**
  * Kinesis Spark Streaming WordCount example.
@@ -57,12 +57,11 @@ import org.apache.spark.SparkContext
  *     (ie. https://kinesis.us-east-1.amazonaws.com)
  *   <access-key-id> is the AWS Access Key Id
  *   <secret-key> is the AWS Secret Key
- *   master is the Spark master
  *   
  * Example:
  *    $ $SPARK_HOME/bin/run-example \
  *        org.apache.spark.examples.streaming.KinesisWordCountASL mySparkStream \
- *        https://kinesis.us-east-1.amazonaws.com <access-key-id> <secret-key> <master>
+ *        https://kinesis.us-east-1.amazonaws.com <access-key-id> <secret-key>
  *
  * Note that number of workers/threads should be 1 more than the number of receivers.
  * This leaves one thread available for actually processing the data.
@@ -74,7 +73,7 @@ import org.apache.spark.SparkContext
 object KinesisWordCountASL extends Logging {
   def main(args: Array[String]) {
     /* Check that all required args were passed in. */
-    if (args.length < 5) {
+    if (args.length < 4) {
       System.err.println(
         """
           |Usage: KinesisWordCount <stream-name> <endpoint-url> <access-key-id> <secret-key>
@@ -83,7 +82,6 @@ object KinesisWordCountASL extends Logging {
           |                   (e.g. https://kinesis.us-east-1.amazonaws.com)
           |    <access-key-id> is the AWS Access Key Id
           |    <secret-key> is the AWS Secret Key
-          |    master is the Spark master
         """.stripMargin)
       System.exit(1)
     }
@@ -91,10 +89,10 @@ object KinesisWordCountASL extends Logging {
     StreamingExamples.setStreamingLogLevels()
 
     /* Populate the appropriate variables from the given args */
-    val Array(streamName, endpointUrl, awsAccessKeyId, awsSecretKey, master) = args
+    val Array(streamName, endpointUrl, awsAccessKeyId, awsSecretKey) = args
 
     /* Determine the number of shards from the stream */
-    val kinesisClient = new AmazonKinesisClient(new BasicAWSCredentialsProvider(awsAccessKeyId, 
+    val kinesisClient = new AmazonKinesisClient(new BasicAWSCredentials(awsAccessKeyId, 
         awsSecretKey))
     kinesisClient.setEndpoint(endpointUrl)
     
@@ -107,7 +105,7 @@ object KinesisWordCountASL extends Logging {
     /* Setup the and SparkConfig and StreamingContext */
     /* Spark Streaming batch interval */
     val batchInterval = Milliseconds(2000)
-    val sparkConfig = new SparkConf().setAppName("KinesisWordCount").setMaster(master)
+    val sparkConfig = new SparkConf().setAppName("KinesisWordCount")
 
     val ssc = new StreamingContext(sparkConfig, batchInterval)
 
@@ -130,7 +128,12 @@ object KinesisWordCountASL extends Logging {
 
     /* Map each word to a (word, 1) tuple so we can reduce/aggregate by key. */
     val wordCounts = words.map(word => (word, 1)).reduceByKey(_ + _)
-
+    
+    /* Create temp table at every batch interval */
+    wordCounts.foreachRDD(
+       _.toDF.registerTempTable("kinesis_word_count_temp")
+    )
+    
     /* Print the first 10 wordCounts */
     wordCounts.print()
 
@@ -159,9 +162,9 @@ object KinesisWordCountASL extends Logging {
  */
 object KinesisWordCountProducerASL {
   def main(args: Array[String]) {
-    if (args.length < 4) {
+    if (args.length < 6) {
       System.err.println("Usage: KinesisWordCountProducerASL <stream-name> <endpoint-url>" +
-          "<access-key-id> <secret-key> <records-per-sec> <words-per-record>")
+          " <access-key-id> <secret-key> <records-per-sec> <words-per-record>")
       System.exit(1)
     }
 
@@ -190,7 +193,7 @@ object KinesisWordCountProducerASL {
     val MaxRandomInts = 10
 
     /* Create the Kinesis client */
-    val kinesisClient = new AmazonKinesisClient(new BasicAWSCredentialsProvider(awsAccessKeyId, 
+    val kinesisClient = new AmazonKinesisClient(new BasicAWSCredentials(awsAccessKeyId, 
         awsSecretKey))
     kinesisClient.setEndpoint(endpoint)
 

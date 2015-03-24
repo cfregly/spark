@@ -59,14 +59,14 @@ class KinesisReceiverSuite extends TestSuiteBase with Matchers with BeforeAndAft
   var receiverMock: KinesisReceiver = _
   var checkpointerMock: IRecordProcessorCheckpointer = _
   var checkpointClockMock: ManualClock = _
-  var checkpointStateMock: KinesisCheckpointState = _
+  var checkpointStateMock: KinesisIntervalCheckpointer = _
   var currentClockMock: Clock = _
 
   override def beforeFunction() = {
     receiverMock = mock[KinesisReceiver]
     checkpointerMock = mock[IRecordProcessorCheckpointer]
     checkpointClockMock = mock[ManualClock]
-    checkpointStateMock = mock[KinesisCheckpointState]
+    checkpointStateMock = mock[KinesisIntervalCheckpointer]
     currentClockMock = mock[Clock]
   }
 
@@ -129,7 +129,7 @@ class KinesisReceiverSuite extends TestSuiteBase with Matchers with BeforeAndAft
 
     val checkpointIntervalMillis = 10
     val checkpointState =
-      new KinesisCheckpointState(Milliseconds(checkpointIntervalMillis), currentClockMock)
+      new KinesisIntervalCheckpointer(Milliseconds(checkpointIntervalMillis), currentClockMock)
     assert(checkpointState.checkpointClock.getTimeMillis() == checkpointIntervalMillis)
 
     verify(currentClockMock, times(1)).getTimeMillis()
@@ -138,7 +138,7 @@ class KinesisReceiverSuite extends TestSuiteBase with Matchers with BeforeAndAft
   test("should checkpoint if we have exceeded the checkpoint interval") {
     when(currentClockMock.getTimeMillis()).thenReturn(0)
 
-    val checkpointState = new KinesisCheckpointState(Milliseconds(Long.MinValue), currentClockMock)
+    val checkpointState = new KinesisIntervalCheckpointer(Milliseconds(Long.MinValue), currentClockMock)
     assert(checkpointState.shouldCheckpoint())
 
     verify(currentClockMock, times(1)).getTimeMillis()
@@ -147,7 +147,7 @@ class KinesisReceiverSuite extends TestSuiteBase with Matchers with BeforeAndAft
   test("shouldn't checkpoint if we have not exceeded the checkpoint interval") {
     when(currentClockMock.getTimeMillis()).thenReturn(0)
 
-    val checkpointState = new KinesisCheckpointState(Milliseconds(Long.MaxValue), currentClockMock)
+    val checkpointState = new KinesisIntervalCheckpointer(Milliseconds(Long.MaxValue), currentClockMock)
     assert(!checkpointState.shouldCheckpoint())
 
     verify(currentClockMock, times(1)).getTimeMillis()
@@ -158,7 +158,7 @@ class KinesisReceiverSuite extends TestSuiteBase with Matchers with BeforeAndAft
 
     val checkpointIntervalMillis = 10
     val checkpointState =
-      new KinesisCheckpointState(Milliseconds(checkpointIntervalMillis), currentClockMock)
+      new KinesisIntervalCheckpointer(Milliseconds(checkpointIntervalMillis), currentClockMock)
     assert(checkpointState.checkpointClock.getTimeMillis() == checkpointIntervalMillis)
     checkpointState.advanceCheckpoint()
     assert(checkpointState.checkpointClock.getTimeMillis() == (2 * checkpointIntervalMillis))
@@ -186,7 +186,7 @@ class KinesisReceiverSuite extends TestSuiteBase with Matchers with BeforeAndAft
     val expectedIsStopped = false
     when(receiverMock.isStopped()).thenReturn(expectedIsStopped)
 
-    val actualVal = KinesisRecordProcessor.retryRandom(receiverMock.isStopped(), 2, 100)
+    val actualVal = KinesisRecordProcessor.retryRandomBackoff(receiverMock.isStopped(), 2, 100)
     assert(actualVal == expectedIsStopped)
 
     verify(receiverMock, times(1)).isStopped()
@@ -198,7 +198,7 @@ class KinesisReceiverSuite extends TestSuiteBase with Matchers with BeforeAndAft
         .thenThrow(new ThrottlingException("error message"))
         .thenReturn(expectedIsStopped)
 
-    val actualVal = KinesisRecordProcessor.retryRandom(receiverMock.isStopped(), 2, 100)
+    val actualVal = KinesisRecordProcessor.retryRandomBackoff(receiverMock.isStopped(), 2, 100)
     assert(actualVal == expectedIsStopped)
 
     verify(receiverMock, times(2)).isStopped()
@@ -210,7 +210,7 @@ class KinesisReceiverSuite extends TestSuiteBase with Matchers with BeforeAndAft
         .thenThrow(new KinesisClientLibDependencyException("error message"))
         .thenReturn(expectedIsStopped)
 
-    val actualVal = KinesisRecordProcessor.retryRandom(receiverMock.isStopped(), 2, 100)
+    val actualVal = KinesisRecordProcessor.retryRandomBackoff(receiverMock.isStopped(), 2, 100)
     assert(actualVal == expectedIsStopped)
 
     verify(receiverMock, times(2)).isStopped()
@@ -220,7 +220,7 @@ class KinesisReceiverSuite extends TestSuiteBase with Matchers with BeforeAndAft
     when(checkpointerMock.checkpoint()).thenThrow(new ShutdownException("error message"))
 
     intercept[ShutdownException] {
-      KinesisRecordProcessor.retryRandom(checkpointerMock.checkpoint(), 2, 100)
+      KinesisRecordProcessor.retryRandomBackoff(checkpointerMock.checkpoint(), 2, 100)
     }
 
     verify(checkpointerMock, times(1)).checkpoint()
@@ -230,7 +230,7 @@ class KinesisReceiverSuite extends TestSuiteBase with Matchers with BeforeAndAft
     when(checkpointerMock.checkpoint()).thenThrow(new InvalidStateException("error message"))
 
     intercept[InvalidStateException] {
-      KinesisRecordProcessor.retryRandom(checkpointerMock.checkpoint(), 2, 100)
+      KinesisRecordProcessor.retryRandomBackoff(checkpointerMock.checkpoint(), 2, 100)
     }
 
     verify(checkpointerMock, times(1)).checkpoint()
@@ -240,7 +240,7 @@ class KinesisReceiverSuite extends TestSuiteBase with Matchers with BeforeAndAft
     when(checkpointerMock.checkpoint()).thenThrow(new RuntimeException("error message"))
 
     intercept[RuntimeException] {
-      KinesisRecordProcessor.retryRandom(checkpointerMock.checkpoint(), 2, 100)
+      KinesisRecordProcessor.retryRandomBackoff(checkpointerMock.checkpoint(), 2, 100)
     }
 
     verify(checkpointerMock, times(1)).checkpoint()
@@ -253,7 +253,7 @@ class KinesisReceiverSuite extends TestSuiteBase with Matchers with BeforeAndAft
         .thenThrow(new ThrottlingException(expectedErrorMessage))
 
     val exception = intercept[RuntimeException] {
-      KinesisRecordProcessor.retryRandom(checkpointerMock.checkpoint(), 2, 100)
+      KinesisRecordProcessor.retryRandomBackoff(checkpointerMock.checkpoint(), 2, 100)
     }
     exception.getMessage().shouldBe(expectedErrorMessage)
 

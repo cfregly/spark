@@ -42,8 +42,8 @@ object KinesisUtils {
    * @param ssc    StreamingContext object
    * @param streamName   Kinesis stream name
    * @param endpointUrl  Url of Kinesis service (e.g., https://kinesis.us-east-1.amazonaws.com)
-   * @param awsAccessKeyId  AWS AccessKeyId (if null, will use DefaultAWSCredentialsProviderChain)
-   * @param awsSecretKey  AWS SecretKey (if null, will use DefaultAWSCredentialsProviderChain)
+   * @param awsAccessKeyId  AWS AccessKeyId (if null, we use DefaultAWSCredentialsProviderChain)
+   * @param awsSecretKey  AWS SecretKey (if null, we use DefaultAWSCredentialsProviderChain)
    * @param checkpointInterval  Checkpoint interval for Kinesis checkpointing.
    *                            See the Kinesis Spark Streaming documentation for more
    *                            details on the different types of checkpoints.
@@ -53,7 +53,8 @@ object KinesisUtils {
    *                                 per Kinesis' limit of 24 hours
    *                                 (InitialPositionInStream.TRIM_HORIZON) or
    *                                 the tip of the stream (InitialPositionInStream.LATEST).
-   * @param storageLevel Storage level to use for storing the received objects 
+   *                                 Checkpoint info will override this setting, however.
+   * @param storageLevel Storage and replication level to use for storing the received objects 
    *                     (StorageLevel.MEMORY_AND_DISK_2, StorageLevel.MEMORY_ONLY_2, etc)
    *
    * @return ReceiverInputDStream[Array[Byte]]

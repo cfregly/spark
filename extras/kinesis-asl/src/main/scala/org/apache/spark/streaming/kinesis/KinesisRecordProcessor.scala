@@ -17,12 +17,9 @@
 package org.apache.spark.streaming.kinesis
 
 import java.util.List
-
 import scala.collection.JavaConversions.asScalaBuffer
 import scala.util.Random
-
 import org.apache.spark.Logging
-
 import com.amazonaws.services.kinesis.clientlibrary.exceptions.InvalidStateException
 import com.amazonaws.services.kinesis.clientlibrary.exceptions.KinesisClientLibDependencyException
 import com.amazonaws.services.kinesis.clientlibrary.exceptions.ShutdownException
@@ -31,33 +28,167 @@ import com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessor
 import com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorCheckpointer
 import com.amazonaws.services.kinesis.clientlibrary.types.ShutdownReason
 import com.amazonaws.services.kinesis.model.Record
+import org.apache.spark.streaming.receiver.BlockGenerator
+import java.util.concurrent.ConcurrentHashMap
+import org.apache.spark.storage.StreamBlockId
+import org.apache.spark.streaming.receiver.BlockGeneratorListener
+import org.apache.spark.SparkEnv
+import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.HashMap
 
 /**
  * Kinesis-specific implementation of the Kinesis Client Library (KCL) IRecordProcessor.
  * This implementation operates on the Array[Byte] from the KinesisReceiver.
- * The Kinesis Worker creates an instance of this KinesisRecordProcessor upon startup.
+ * The Kinesis Worker creates an instance of this KinesisRecordProcessor for each 
+ *   shard in the Kinesis stream upon startup.  This is normally done in separate threads, 
+ *   but the KCLs within the KinesisReceivers will balance themselves out if you create 
+ *   multiple Receivers.
  *
  * @param receiver Kinesis receiver
- * @param workerId for logging purposes
- * @param checkpointState represents the checkpoint state including the next checkpoint time.
- *   It's injected here for mocking purposes.
+ * @param workerId to track sequence numbers and 
  */
 private[kinesis] class KinesisRecordProcessor(
     receiver: KinesisReceiver,
-    workerId: String,
-    checkpointState: KinesisCheckpointState) extends IRecordProcessor with Logging {
+    workerId: String) extends IRecordProcessor with Logging {
 
-  /* shardId to be populated during initialize() */
-  var shardId: String = _
+  // shardId to be populated during initialize()
+  private var shardId: String = _
 
+  // TODO:  figure this out for storing the latest checkpointer or sequence number within a block
+  //        before it's generated
+  // Latest sequence number within a not-yet-generated block 
+  //private var latestSeqNumberWithinNotYetGeneratedBlock: String = _
+  private var latestCheckpointerWithinNotYetGeneratedBlock: IRecordProcessorCheckpointer = _
+
+  /*
+   * Last sequence number of a generated block
+   * StreamBlockId :: seqNumber (String)
+   */
+  //TODO:  figure this out
+  //private var lastSeqNumberOfGeneratedBlockMap: ConcurrentHashMap[StreamBlockId, String] = _  
+  private var lastCheckpointerOfGeneratedBlockMap: 
+    ConcurrentHashMap[StreamBlockId, IRecordProcessorCheckpointer] = _
+  
+
+  /*
+   * Manage the BlockGenerator in the RecordProcessor itself to better manage block store offset
+   * commits back to the Kinesis source (ie. Checkpointing or ACK'ing).
+   */
+  private var blockGenerator: BlockGenerator = _
+ 
   /**
    * The Kinesis Client Library calls this method during IRecordProcessor initialization.
    *
    * @param shardId assigned by the KCL to this particular RecordProcessor.
    */
   override def initialize(shardId: String) {
-    logInfo(s"Initialize:  Initializing workerId $workerId with shardId $shardId")
     this.shardId = shardId
+
+    lastCheckpointerOfGeneratedBlockMap = 
+      new ConcurrentHashMap[StreamBlockId, IRecordProcessorCheckpointer]()
+
+    // Create a new BlockGenerator by implementing the BlockGeneratorListener
+    blockGenerator = new BlockGenerator(new BlockGeneratorListener() {
+    /*
+     * BlockGenerator callbacks
+     */
+    /**
+     *  Update latest sequence number within a block that has not yet been generated.
+     *  This is called when an element is added to a not-yet-generated block.
+     */
+    def onAddData(data: Any, metadata: Any): Unit = {
+      // TODO:  we dont have the sequence number, unfortunately!  we need to pass Checkpointer
+      //        in metadata?!
+      // Update the sequence number of the data that was added to the generator
+      if (metadata != null) {
+        //latestSeqNumberWithinNotYetGeneratedBlock = metadata.asInstanceOf[String]
+        latestCheckpointerWithinNotYetGeneratedBlock = 
+          metadata.asInstanceOf[IRecordProcessorCheckpointer]
+      }
+
+      // TODO:  Should we log or error out if metadata == null?
+    }
+
+    /**
+     * Update the latest sequence number for the generated block.
+     * This is called when a block is generated but not yet stored.
+     */
+     def onGenerateBlock(blockId: StreamBlockId): Unit = {
+       // Remember the offsets of shards when a block has been generated
+       //TODO:  Figure this out
+       //lastSeqNumberOfGeneratedBlockMap.put(blockId, latestCheckpointerWithinNotYetGeneratedBlock)
+       lastCheckpointerOfGeneratedBlockMap.put(blockId, 
+         latestCheckpointerWithinNotYetGeneratedBlock)
+       // reset latest sequence number back to null
+       //TODO: Figure this out
+       //latestSeqNumberWithinNotYetGeneratedBlock = null
+       latestCheckpointerWithinNotYetGeneratedBlock = null
+     }
+
+     /**
+      * Store the ready-to-be-stored block and checkpoint the sequence number back to the source.
+      * This is called when a block is ready to be stored (pushed).
+      */
+      def onPushBlock(blockId: StreamBlockId, arrayBuffer: ArrayBuffer[_]): Unit = {
+        // Store block and checkpoint the sequence number back to the source
+        storeBlockAndCheckpointSequenceNumber(blockId, arrayBuffer)
+      }
+
+      def onError(message: String, throwable: Throwable): Unit = {
+        //TODO:  figure out what this does and/or log an error
+        receiver.reportError(message, throwable)
+        //logger.
+      }
+    }, receiver.streamId, SparkEnv.get.conf)
+
+    // Start the BlockGenerator
+    blockGenerator.start()
+
+    logInfo(s"Initialized workerId $workerId with shardId $shardId and started BlockGenerator")
+  }
+
+  /**
+   * Store the ready-to-be-stored block (multiple  and checkpoint the sequence number back to the source.
+   * Stop the receiver if store() retries are exceeded.
+   */
+  private def storeBlockAndCheckpointSequenceNumber(blockId: StreamBlockId, 
+      arrayBuffer: ArrayBuffer[_]): Unit = {
+
+    //TODO:  convert this to retryRandomOffset()
+    var exception: Exception = null
+    var count = 0
+    var pushed = false
+    while (!pushed && count <= 3) {
+      try {
+        receiver.store((arrayBuffer.asInstanceOf[ArrayBuffer[Byte]]).array())
+        //receiver.store(arrayBuffer.asInstanceOf[ArrayBuffer[(K, V)]])
+        pushed = true
+      } catch {
+        case ex: Exception =>
+          count += 1
+          exception = ex
+      }
+    }
+    if (pushed) {
+      // Iterate through all the blocks and commit the last sequence number
+      // TODO:  But what if these are out of order because Map doesn't guarantee order?
+      // The Option here will filter out the nulls
+      // TODO:  Figure this out
+      //Option(lastSeqNumberOfGeneratedBlockMap.get(blockId))
+      Option(lastCheckpointerOfGeneratedBlockMap.get(blockId))
+        .foreach(lastCheckpointerOfGeneratedBlock => {
+          //TODO:  checkpoint the sequence number of each block in the map
+          //TODO:  how do we carry checkpointer over to here?
+          lastCheckpointerOfGeneratedBlock.checkpoint()
+        })
+
+      // remove the blocks from the
+      //TODO: figure this out
+      //lastSeqNumberOfGeneratedBlockMap.remove(blockId)
+      lastCheckpointerOfGeneratedBlockMap.remove(blockId)
+    } else {
+      receiver.stop("Error while storing block into Spark", exception)
+    }
   }
 
   /**
@@ -73,39 +204,25 @@ private[kinesis] class KinesisRecordProcessor(
     if (!receiver.isStopped()) {
       try {
         /*
-         * Note:  If we try to store the raw ByteBuffer from record.getData(), the Spark Streaming
-         * Receiver.store(ByteBuffer) attempts to deserialize the ByteBuffer using the
-         *   internally-configured Spark serializer (kryo, etc).
-         * This is not desirable, so we instead store a raw Array[Byte] and decouple
-         *   ourselves from Spark's internal serialization strategy.
+         * Notes:  
+         * 1) If we try to store the raw ByteBuffer from record.getData(), the Spark Streaming
+         *    Receiver.store(ByteBuffer) attempts to deserialize the ByteBuffer using the
+         *    internally-configured Spark serializer (kryo, etc).
+         * 2) This is not desirable, so we instead store a raw Array[Byte] and decouple
+         *    ourselves from Spark's internal serialization strategy.
+         * 3) For performance, the BlockGenerator is asynchronously queuing elements within its
+         *    memory before creating blocks.  This prevents the small block scenario, but requires
+         *    that you register callbacks to know when a block has been generated and stored 
+         *    (WAL is sufficient for storage) before can checkpoint back to the source.
          */
-        batch.foreach(record => receiver.store(record.getData().array()))
+        // TODO: figure out how to get sequence number into metadata
+
+        batch.foreach(record => 
+          blockGenerator.addDataWithCallback(record.getData().array(), checkpointer)
+          //receiver.store(record.getData().array())
+        )
         
         logDebug(s"Stored:  Worker $workerId stored ${batch.size} records for shardId $shardId")
-
-        /*
-         * Checkpoint the sequence number of the last record successfully processed/stored 
-         *   in the batch.
-         * In this implementation, we're checkpointing after the given checkpointIntervalMillis.
-         * Note that this logic requires that processRecords() be called AND that it's time to 
-         *   checkpoint.  I point this out because there is no background thread running the 
-         *   checkpointer.  Checkpointing is tested and trigger only when a new batch comes in.
-         * If the worker is shutdown cleanly, checkpoint will happen (see shutdown() below).
-         * However, if the worker dies unexpectedly, a checkpoint may not happen.
-         * This could lead to records being processed more than once.
-         */
-        if (checkpointState.shouldCheckpoint()) {
-          /* Perform the checkpoint */
-          KinesisRecordProcessor.retryRandom(checkpointer.checkpoint(), 4, 100)
-
-          /* Update the next checkpoint time */
-          checkpointState.advanceCheckpoint()
-
-          logDebug(s"Checkpoint:  WorkerId $workerId completed checkpoint of ${batch.size}" +
-              s" records for shardId $shardId")
-          logDebug(s"Checkpoint:  Next checkpoint is at " +
-              s" ${checkpointState.checkpointClock.getTimeMillis()} for shardId $shardId")
-        }
       } catch {
         case e: Throwable => {
           /*
@@ -137,16 +254,13 @@ private[kinesis] class KinesisRecordProcessor(
    * @param checkpointer used to perform a Kinesis checkpoint for ShutdownReason.TERMINATE
    * @param reason for shutdown (ShutdownReason.TERMINATE or ShutdownReason.ZOMBIE)
    */
-  override def shutdown(checkpointer: IRecordProcessorCheckpointer, reason: ShutdownReason) {
-    logInfo(s"Shutdown:  Shutting down workerId $workerId with reason $reason")
+  override def shutdown(reason: ShutdownReason) {
+    logInfo(s"Shutting down workerId $workerId with reason $reason")
     reason match {
-      /*
-       * TERMINATE Use Case.  Checkpoint.
-       * Checkpoint to indicate that all records from the shard have been drained and processed.
-       * It's now OK to read from the new shards that resulted from a resharding event.
-       */
+      //TODO:  How do we handle a final checkpoint (if at all).  
+      //       What if a checkpoint is in process from the callback?
       case ShutdownReason.TERMINATE => 
-        KinesisRecordProcessor.retryRandom(checkpointer.checkpoint(), 4, 100)
+        //KinesisRecordProcessor.retryRandomBackoff(checkpointer.checkpoint(), 4, 100)
 
       /*
        * ZOMBIE Use Case.  NoOp.
@@ -159,6 +273,30 @@ private[kinesis] class KinesisRecordProcessor(
       /* Unknown reason.  NoOp */
       case _ =>
     }
+
+    if (blockGenerator != null) {
+      // TODO:  Is this synchronous?
+      //        Hopefully it is to allow graceful draining
+      blockGenerator.stop()
+      blockGenerator = null
+    }
+
+   /*
+    * These should come last in case the blockGenerator still needs to fire callbacks
+    * (TODO:  investigate concurrency properties of these callbacks)
+    */
+//    if (lastSeqNumberOfGeneratedBlockMap != null) {
+//      lastSeqNumberOfGeneratedBlockMap = null
+//    }
+    if (lastCheckpointerOfGeneratedBlockMap != null) {
+      lastCheckpointerOfGeneratedBlockMap = null
+    }
+
+    
+//    latestSeqNumberWithinNotYetGeneratedBlock = null
+    latestCheckpointerWithinNotYetGeneratedBlock = null
+
+    shardId = null
   }
 }
 
@@ -176,7 +314,7 @@ private[kinesis] object KinesisRecordProcessor extends Logging {
    *  or any exception that persists after numRetriesLeft reaches 0
    */
   @annotation.tailrec
-  def retryRandom[T](expression: => T, numRetriesLeft: Int, maxBackOffMillis: Int): T = {
+  def retryRandomBackoff[T](expression: => T, numRetriesLeft: Int, maxBackOffMillis: Int): T = {
     util.Try { expression } match {
       /* If the function succeeded, evaluate to x. */
       case util.Success(x) => x
@@ -188,7 +326,7 @@ private[kinesis] object KinesisRecordProcessor extends Logging {
                val backOffMillis = Random.nextInt(maxBackOffMillis)
                Thread.sleep(backOffMillis)
                logError(s"Retryable Exception:  Random backOffMillis=${backOffMillis}", e)
-               retryRandom(expression, numRetriesLeft - 1, maxBackOffMillis)
+               retryRandomBackoff(expression, numRetriesLeft - 1, maxBackOffMillis)
              }
         /* Throw:  Shutdown has been requested by the Kinesis Client Library.*/
         case _: ShutdownException => {

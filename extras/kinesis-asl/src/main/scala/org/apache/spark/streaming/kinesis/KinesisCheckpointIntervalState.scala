@@ -26,12 +26,12 @@ import org.apache.spark.util.{Clock, ManualClock, SystemClock}
  * @param checkpointInterval 
  * @param currentClock.  Default to current SystemClock if none is passed in (mocking purposes)
  */
-private[kinesis] class KinesisCheckpointState(
+private[kinesis] class KinesisCheckpointIntervalState(
     checkpointInterval: Duration, 
     currentClock: Clock = new SystemClock())
   extends Logging {
-  
-  /* Initialize the checkpoint clock using the given currentClock + checkpointInterval millis */
+
+  // Initialize the checkpoint clock using the given currentClock + checkpointInterval millis
   val checkpointClock = new ManualClock()
   checkpointClock.setTime(currentClock.getTimeMillis() + checkpointInterval.milliseconds)
 

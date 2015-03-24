@@ -18,12 +18,10 @@ package org.apache.spark.streaming.kinesis
 
 import java.net.InetAddress
 import java.util.UUID
-
 import org.apache.spark.Logging
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.Duration
 import org.apache.spark.streaming.receiver.Receiver
-
 import com.amazonaws.auth.AWSCredentialsProvider
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain
 import com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessor
@@ -31,6 +29,10 @@ import com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorF
 import com.amazonaws.services.kinesis.clientlibrary.lib.worker.InitialPositionInStream
 import com.amazonaws.services.kinesis.clientlibrary.lib.worker.KinesisClientLibConfiguration
 import com.amazonaws.services.kinesis.clientlibrary.lib.worker.Worker
+import java.util.concurrent.ConcurrentHashMap
+import org.apache.spark.storage.StreamBlockId
+import org.apache.spark.streaming.receiver.BlockGenerator
+import scala.collection.mutable.HashMap
 
 /**
  * Custom AWS Kinesis-specific implementation of Spark Streaming's Receiver.
@@ -82,16 +84,16 @@ private[kinesis] class KinesisReceiver(
    *  workerId should be based on the ip address of the actual Spark Worker where this code runs
    *   (not the Driver's ip address.)
    */
-   var workerId: String = null
+   private var workerId: String = null
 
   /*
    * Create a Kinesis Worker.
    * This is the core client abstraction from the Kinesis Client Library (KCL).
    * We pass the RecordProcessorFactory from above as well as the KCL config instance.
-   * A Kinesis Worker can process 1..* shards from the given stream - each with its 
-   *   own RecordProcessor.
+   * A Kinesis Worker can process 1..* shards from the given stream.
+   * Each shard is assigned its own IRecordProcessor.
    */
-  var worker: Worker = null
+  private var worker: Worker = null
 
   /**
    *  This is called when the KinesisReceiver starts and must be non-blocking.
@@ -114,7 +116,7 @@ private[kinesis] class KinesisReceiver(
     */
     val recordProcessorFactory = new IRecordProcessorFactory {
       override def createProcessor: IRecordProcessor = new KinesisRecordProcessor(receiver,
-        workerId, new KinesisCheckpointState(checkpointInterval))
+        workerId, new KinesisCheckpointIntervalState(checkpointInterval))
     }
     
     worker = new Worker(recordProcessorFactory, kinesisClientLibConfiguration)
@@ -129,10 +131,12 @@ private[kinesis] class KinesisReceiver(
    *  The KCL will do its best to drain and checkpoint any in-flight records upon shutdown.
    */
   override def onStop() {
-    if (worker != null) worker.shutdown()
-    logInfo(s"Shut down receiver with workerId $workerId")
-    workerId = null
-    worker = null
+    if (worker != null) {
+      worker.shutdown()
+      logInfo(s"Stopped receiver for workerId $workerId")
+      worker = null
+      workerId = null
+    }    
   }
   
   /*
